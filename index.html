@@ -235,6 +235,45 @@
     text-align:center; max-width:520px; line-height:1.5;
   }
 
+  .toggle-btn{
+    position:absolute; bottom:-3px; left:-3px; width:19px; height:19px; border-radius:50%;
+    background:var(--danger-bg); color:var(--ink-0); border:1px solid var(--glass-border);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; line-height:1; z-index:5;
+  }
+  .toggle-btn svg{ width:10px; height:10px; }
+
+  .bench-section{
+    width:min(94vw, 520px);
+    margin:0 auto 20px;
+    padding:14px clamp(12px,3vw,18px) 16px;
+    border-radius:var(--radius-lg);
+    background:var(--glass-bg);
+    border:1px solid var(--glass-border);
+    backdrop-filter:blur(14px) saturate(140%); -webkit-backdrop-filter:blur(14px) saturate(140%);
+    box-shadow:var(--glass-shadow);
+  }
+  .bench-title{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    font-family:var(--font-display); font-weight:600; letter-spacing:0.5px;
+    font-size:16px; text-transform:uppercase; color:var(--ink-1);
+    margin:0 0 12px;
+  }
+  .bench-empty{
+    color:var(--ink-2); font-size:12px; text-align:center; padding:14px 6px;
+  }
+  .bench-list{
+    display:flex; flex-wrap:wrap; gap:16px 12px;
+  }
+  .bench-player{
+    display:flex; flex-direction:column; align-items:center; gap:5px;
+    width:78px;
+    animation:pop-in .35s ease backwards;
+  }
+  .bench-player .avatar-wrap{ width:54px; height:54px; }
+  .bench-player .name-input{ font-size:10px; padding:2px 3px; }
+  .bench-player .role-select{ font-size:8.5px; padding:2px 3px; }
+
   @media (max-width:380px){ .brand h1{font-size:26px;} }
 </style>
 </head>
@@ -254,6 +293,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
       Add player
     </button>
+    <button class="btn" id="add-sub">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+      Add sub
+    </button>
     <button class="btn" id="reset-layout">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 8v5h5"/></svg>
       Snap to formation
@@ -263,7 +306,7 @@
       Export image
     </button>
   </div>
-  <span class="count-pill" id="count-pill">7 players</span>
+  <span class="count-pill" id="count-pill">6 on pitch</span>
 </div>
 
 <div class="legend" id="legend"></div>
@@ -284,7 +327,12 @@
   </div>
 </main>
 
-<p class="hint">Drag any player to place them exactly where you want. Tap the avatar to add a photo, use the small photo icon to remove it again, and use the role menu to switch a player from CF to CB or any other position.</p>
+<div class="bench-section" id="bench-section">
+  <div class="bench-title">Substitutes <span class="count-pill" id="sub-count-pill">5 subs</span></div>
+  <div class="bench-list" id="bench-layer"></div>
+</div>
+
+<p class="hint">Drag any player to place them exactly where you want. Tap the avatar to add a photo, use the small photo icon to remove it again, and use the role menu to switch a player from CF to CB or any other position. Use the small arrow badge to move anyone between the pitch and the substitutes bench — subs are included when you export the image.</p>
 <p class="hints">&copy; Developed by YangKour. From student ITE generation 3</p>
 
 <script>
@@ -318,15 +366,15 @@
   }
 
   var FORMATIONS = {
-    '3-2-1': [3,2,1], '2-3-1': [2,3,1], '2-2-2': [2,2,2], '3-1-2': [3,1,2],
-    '1-3-2': [1,3,2], '2-1-3': [2,1,3], '4-1-1': [4,1,1], '1-4-1': [1,4,1]
+    '2-2-1': [2,2,1], '1-3-1': [1,3,1], '2-1-2': [2,1,2], '3-1-1': [3,1,1],
+    '1-2-2': [1,2,2], '1-1-3': [1,1,3]
   };
   var LINE_Y = { def:70, mid:40, fwd:16 };
   var GK_Y = 92; // goalkeeper always sits on its own line, behind the back line —
                  // never counted as part of the def/mid/fwd formation split.
 
   function distribute(parts, total){
-    var raw = parts.map(function(p){ return p * total / 6; });
+    var raw = parts.map(function(p){ return p * total / 5; });
     var floors = raw.map(Math.floor);
     var used = floors.reduce(function(a,b){return a+b;},0);
     var remainder = total - used;
@@ -356,8 +404,9 @@
   // "3-2-1" meaning 3 defenders + 2 mids + 1 forward, with the keeper
   // positioned separately rather than being absorbed into the back line.
   function layoutPlayers(){
-    var gks = players.filter(function(p){ return p.role === 'GK'; });
-    var outfield = players.filter(function(p){ return p.role !== 'GK'; });
+    var starters = players.filter(function(p){ return !p.sub; });
+    var gks = starters.filter(function(p){ return p.role === 'GK'; });
+    var outfield = starters.filter(function(p){ return p.role !== 'GK'; });
     var coords = computeLayout(currentFormation, outfield.length);
     outfield.forEach(function(p, i){ p.x = coords[i].x; p.y = coords[i].y; });
     gks.forEach(function(p, i){
@@ -366,14 +415,18 @@
     });
   }
 
-  var defaultRoles = ['GK','LB','CB','RB','CAM','CDM','CF'];
+  var defaultRoles = ['GK','LB','CB','RB','CM','CF'];
+  var defaultSubRoles = ['CB','CDM','CAM','LW','RW'];
   var players = [];
   var nextId = 0;
-  var currentFormation = '3-2-1';
+  var currentFormation = '2-2-1';
 
   function seed(){
     for(var i=0;i<defaultRoles.length;i++){
-      players.push({ id: nextId++, name:'', role: defaultRoles[i], photo:null, x:50, y:50 });
+      players.push({ id: nextId++, name:'', role: defaultRoles[i], photo:null, x:50, y:50, sub:false });
+    }
+    for(var j=0;j<defaultSubRoles.length;j++){
+      players.push({ id: nextId++, name:'', role: defaultSubRoles[j], photo:null, x:null, y:null, sub:true });
     }
     layoutPlayers();
   }
@@ -393,12 +446,25 @@
   function photoOffIcon(){
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M21 16.5V6.5a1.5 1.5 0 0 0-1.5-1.5H9.5"/><path d="M3 7.5v10A1.5 1.5 0 0 0 4.5 19h13"/><circle cx="9" cy="10.5" r="2.2"/></svg>';
   }
+  function benchIcon(){
+    // down arrow — send this player to the substitutes bench
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/></svg>';
+  }
+  function pitchIcon(){
+    // up arrow — send this substitute onto the pitch
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V9"/><path d="M8 13l4-4 4 4"/><path d="M5 5h14"/></svg>';
+  }
 
   function render(){
-    layer.innerHTML = '';
-    countPill.textContent = players.length + (players.length===1 ? ' player' : ' players');
+    var starters = players.filter(function(p){ return !p.sub; });
+    var subs = players.filter(function(p){ return p.sub; });
 
-    players.forEach(function(p, idx){
+    countPill.textContent = starters.length + ' on pitch';
+    var subCountPill = document.getElementById('sub-count-pill');
+    if(subCountPill) subCountPill.textContent = subs.length + (subs.length===1 ? ' sub' : ' subs');
+
+    layer.innerHTML = '';
+    starters.forEach(function(p, idx){
       var g = groupOf(p.role);
       var card = document.createElement('div');
       card.className = 'player';
@@ -417,6 +483,7 @@
           '</label>'+
           '<input type="file" accept="image/*" id="'+inputId+'" data-id="'+p.id+'" style="display:none">'+
           '<div class="role-badge" style="background:'+g.color+'">'+p.role+'</div>'+
+          '<button type="button" class="toggle-btn sub-toggle" data-id="'+p.id+'" aria-label="Send to bench" title="Send to bench">'+benchIcon()+'</button>'+
         '</div>'+
         '<input class="name-input" type="text" maxlength="16" placeholder="Player '+(idx+1)+'" value="'+(p.name||'').replace(/"/g,'&quot;')+'" data-id="'+p.id+'">'+
         '<select class="role-select" data-id="'+p.id+'">'+ roleOptionsHTML(p.role) +'</select>';
@@ -424,7 +491,46 @@
       layer.appendChild(card);
     });
 
-    layer.querySelectorAll('input[type=file]').forEach(function(inp){
+    var benchLayer = document.getElementById('bench-layer');
+    benchLayer.innerHTML = '';
+    if(subs.length === 0){
+      benchLayer.innerHTML = '<div class="bench-empty">No substitutes yet — tap "Add sub" to build your bench.</div>';
+    } else {
+      subs.forEach(function(p, idx){
+        var g = groupOf(p.role);
+        var card = document.createElement('div');
+        card.className = 'bench-player';
+        card.dataset.id = p.id;
+        card.style.animationDelay = (idx * 0.03) + 's';
+
+        var inputId = 'file-' + p.id;
+        card.innerHTML =
+          '<div class="avatar-wrap" data-id="'+p.id+'">'+
+            '<button type="button" class="remove-btn" data-id="'+p.id+'" aria-label="Remove player" title="Remove player">'+removeIcon()+'</button>'+
+            (p.photo ? '<button type="button" class="remove-photo-btn" data-id="'+p.id+'" aria-label="Remove photo" title="Remove photo">'+photoOffIcon()+'</button>' : '')+
+            '<label class="avatar" for="'+inputId+'" style="border-color:'+g.color+'; box-shadow:0 0 0 3px rgba(0,0,0,0.15), 0 0 16px 1px '+g.color+', var(--glass-shadow);">'+
+              (p.photo ? '<img src="'+p.photo+'" alt="'+(p.name||'Sub')+'">' : personIcon()) +
+            '</label>'+
+            '<input type="file" accept="image/*" id="'+inputId+'" data-id="'+p.id+'" style="display:none">'+
+            '<div class="role-badge" style="background:'+g.color+'">'+p.role+'</div>'+
+            '<button type="button" class="toggle-btn sub-toggle" data-id="'+p.id+'" aria-label="Send to pitch" title="Send to pitch">'+pitchIcon()+'</button>'+
+          '</div>'+
+          '<input class="name-input" type="text" maxlength="16" placeholder="Sub '+(idx+1)+'" value="'+(p.name||'').replace(/"/g,'&quot;')+'" data-id="'+p.id+'">'+
+          '<select class="role-select" data-id="'+p.id+'">'+ roleOptionsHTML(p.role) +'</select>';
+
+        benchLayer.appendChild(card);
+      });
+    }
+
+    wireCommonEvents();
+    wireDrag();
+  }
+
+  // Shared listeners for photo upload, name, role, remove, and the
+  // pitch/bench toggle — applied across both the pitch layer and the
+  // bench layer so a player behaves the same no matter where it's shown.
+  function wireCommonEvents(){
+    document.querySelectorAll('input[type=file]').forEach(function(inp){
       inp.addEventListener('change', function(e){
         var id = +e.target.getAttribute('data-id');
         var file = e.target.files[0];
@@ -437,29 +543,30 @@
         reader.readAsDataURL(file);
       });
     });
-    layer.querySelectorAll('.name-input').forEach(function(inp){
+    document.querySelectorAll('.name-input').forEach(function(inp){
       inp.addEventListener('input', function(e){
         var id = +e.target.getAttribute('data-id');
         var p = players.find(function(pl){return pl.id===id;});
         if(p) p.name = e.target.value;
       });
     });
-    layer.querySelectorAll('.role-select').forEach(function(sel){
+    document.querySelectorAll('.role-select').forEach(function(sel){
       sel.addEventListener('change', function(e){
         var id = +e.target.getAttribute('data-id');
         var p = players.find(function(pl){return pl.id===id;});
         if(p){ p.role = e.target.value; render(); }
       });
     });
-    layer.querySelectorAll('.remove-btn').forEach(function(btn){
+    document.querySelectorAll('.remove-btn').forEach(function(btn){
       btn.addEventListener('click', function(e){
         e.preventDefault(); e.stopPropagation();
         var id = +btn.getAttribute('data-id');
         players = players.filter(function(pl){ return pl.id !== id; });
+        layoutPlayers();
         render();
       });
     });
-    layer.querySelectorAll('.remove-photo-btn').forEach(function(btn){
+    document.querySelectorAll('.remove-photo-btn').forEach(function(btn){
       btn.addEventListener('click', function(e){
         e.preventDefault(); e.stopPropagation();
         var id = +btn.getAttribute('data-id');
@@ -467,8 +574,14 @@
         if(p){ p.photo = null; render(); }
       });
     });
-
-    wireDrag();
+    document.querySelectorAll('.sub-toggle').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.preventDefault(); e.stopPropagation();
+        var id = +btn.getAttribute('data-id');
+        var p = players.find(function(pl){ return pl.id === id; });
+        if(p){ p.sub = !p.sub; layoutPlayers(); render(); }
+      });
+    });
   }
 
   // ---------------- drag to reposition ----------------
@@ -481,7 +594,7 @@
       var startX, startY;
 
       handle.addEventListener('pointerdown', function(e){
-        if(e.target.closest('.remove-btn') || e.target.closest('.remove-photo-btn')) return; // let the remove buttons handle their own clicks
+        if(e.target.closest('.remove-btn') || e.target.closest('.remove-photo-btn') || e.target.closest('.toggle-btn')) return; // let the remove/toggle buttons handle their own clicks
         dragging = true; moved = false;
         startX = e.clientX; startY = e.clientY;
         handle.setPointerCapture(e.pointerId);
@@ -511,7 +624,7 @@
         dragging = false;
         card.classList.remove('dragging');
         handle.classList.remove('dragging');
-        if(!moved && e.target && !e.target.closest('.remove-btn') && !e.target.closest('.remove-photo-btn')){
+        if(!moved && e.target && !e.target.closest('.remove-btn') && !e.target.closest('.remove-photo-btn') && !e.target.closest('.toggle-btn')){
           var fileInput = card.querySelector('input[type=file]');
           if(fileInput) fileInput.click();
         }
@@ -560,6 +673,14 @@
     var glassStrong = cssVar('--glass-bg-strong') || 'rgba(255,255,255,0.11)';
     var bg1 = cssVar('--bg-1') || '#0d1f16';
 
+    // extra strip below the pitch for substitutes, sized to fit however many there are
+    var subsForSize = players.filter(function(p){ return p.sub; });
+    var benchPadding = 30, titleH = 46, cardW = 116, cardH = 104, gap = 14;
+    var columns = subsForSize.length ? Math.max(1, Math.floor((W - 2*benchPadding + gap) / (cardW + gap))) : 0;
+    var rows = columns ? Math.ceil(subsForSize.length / columns) : 0;
+    var benchHeight = subsForSize.length ? (titleH + rows * cardH + 26) : 0;
+    var totalH = H + benchHeight;
+
     var photoPlayers = players.filter(function(p){ return p.photo; });
     Promise.all(photoPlayers.map(function(p){ return preloadImage(p.photo); }))
       .then(function(loadedImgs){
@@ -567,7 +688,7 @@
         photoPlayers.forEach(function(p, i){ photoMap[p.id] = loadedImgs[i]; });
 
         var canvas = document.createElement('canvas');
-        canvas.width = W * scale; canvas.height = H * scale;
+        canvas.width = W * scale; canvas.height = totalH * scale;
         var ctx = canvas.getContext('2d');
         ctx.scale(scale, scale);
 
@@ -629,9 +750,10 @@
         ctx.arc(W/2, pctH(87), arcR, Math.PI, Math.PI*2);
         ctx.stroke();
 
-        // players
+        // players on the pitch
         var avatarR = 40;
-        players.forEach(function(p){
+        var startersForDraw = players.filter(function(p){ return !p.sub; });
+        startersForDraw.forEach(function(p){
           var g = groupOf(p.role);
           var color = cssVar(g.color.replace('var(', '').replace(')', '')) || '#22c55e';
           var cx = pctW(p.x), cy = pctH(p.y);
@@ -699,6 +821,90 @@
           ctx.fillText(p.role + ' · ' + g.label, cx, cy + avatarR + 44);
         });
 
+        // substitutes bench strip
+        var subsList = players.filter(function(p){ return p.sub; });
+        if(subsList.length){
+          ctx.save();
+          ctx.fillStyle = bg1;
+          ctx.globalAlpha = 0.92;
+          roundedRectPath(ctx, 0, H + 6, W, benchHeight - 6, 20);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.restore();
+
+          ctx.fillStyle = ink1;
+          ctx.font = '700 13px Inter, sans-serif';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'alphabetic';
+          ctx.fillText('SUBSTITUTES', benchPadding, H + 34);
+
+          var subAvatarR = 26;
+          subsList.forEach(function(p, i){
+            var col = i % columns;
+            var row = Math.floor(i / columns);
+            var cx = benchPadding + col * (cardW + gap) + cardW/2;
+            var cy = H + titleH + row * cardH + subAvatarR + 4;
+            var g = groupOf(p.role);
+            var color = cssVar(g.color.replace('var(', '').replace(')', '')) || '#22c55e';
+
+            ctx.save();
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 14;
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+            ctx.arc(cx, cy, subAvatarR, 0, Math.PI*2);
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, subAvatarR - 1.5, 0, Math.PI*2);
+            ctx.clip();
+            var img = photoMap[p.id];
+            if(img){
+              var side = Math.min(img.width, img.height);
+              var sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+              ctx.drawImage(img, sx, sy, side, side, cx - subAvatarR, cy - subAvatarR, subAvatarR*2, subAvatarR*2);
+            } else {
+              ctx.fillStyle = glassStrong.indexOf('rgba') === 0 ? bg1 : glassStrong;
+              ctx.fillRect(cx - subAvatarR, cy - subAvatarR, subAvatarR*2, subAvatarR*2);
+              ctx.fillStyle = ink1;
+              ctx.globalAlpha = 0.8;
+              ctx.beginPath();
+              ctx.arc(cx, cy - subAvatarR*0.28, subAvatarR*0.32, 0, Math.PI*2);
+              ctx.fill();
+              ctx.beginPath();
+              ctx.arc(cx, cy + subAvatarR*0.95, subAvatarR*0.62, Math.PI, Math.PI*2);
+              ctx.fill();
+              ctx.globalAlpha = 1;
+            }
+            ctx.restore();
+
+            var badgeR = 9;
+            var bxp = cx + subAvatarR*0.72, byp = cy + subAvatarR*0.72;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(bxp, byp, badgeR, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#08130c';
+            ctx.font = '700 8.5px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(p.role, bxp, byp + 0.5);
+
+            ctx.fillStyle = ink0;
+            ctx.font = '600 12px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillText(p.name || 'Sub', cx, cy + subAvatarR + 18);
+
+            ctx.fillStyle = ink1;
+            ctx.font = '700 9.5px Inter, sans-serif';
+            ctx.fillText(p.role + ' · ' + g.label, cx, cy + subAvatarR + 32);
+          });
+        }
+
         canvas.toBlob(function(blob){
           var url = URL.createObjectURL(blob);
           var a = document.createElement('a');
@@ -718,11 +924,17 @@
 
 
   document.getElementById('add-player').addEventListener('click', function(){
-    if(players.length >= 14) return;
-    var benchIndex = players.length;
+    if(players.length >= 20) return;
+    var benchIndex = players.filter(function(p){ return !p.sub; }).length;
     var x = 15 + ((benchIndex * 13) % 70);
     var y = 96;
-    players.push({ id: nextId++, name:'', role:'CM', photo:null, x:x, y:y });
+    players.push({ id: nextId++, name:'', role:'CM', photo:null, x:x, y:y, sub:false });
+    render();
+  });
+
+  document.getElementById('add-sub').addEventListener('click', function(){
+    if(players.length >= 20) return;
+    players.push({ id: nextId++, name:'', role:'CM', photo:null, x:null, y:null, sub:true });
     render();
   });
 
