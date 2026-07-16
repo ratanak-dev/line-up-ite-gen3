@@ -230,6 +230,11 @@
     text-align:center; max-width:520px; line-height:1.5;
   }
 
+  .hints{
+    font-size:11px; padding:0 clamp(14px,4vw,22px) 22px;
+    text-align:center; max-width:520px; line-height:1.5;
+  }
+
   @media (max-width:380px){ .brand h1{font-size:26px;} }
 </style>
 </head>
@@ -276,7 +281,7 @@
 </main>
 
 <p class="hint">Drag any player to place them exactly where you want. Tap the avatar to add a photo, use the small photo icon to remove it again, and use the role menu to switch a player from CF to CB or any other position.</p>
-<p>&copy; Developed in 2026. From student ITE generation 3</p>
+<p class="hints">&copy; Developed by YangKour. From student ITE generation 3</p>
 
 <script>
 (function(){
@@ -312,7 +317,7 @@
     '3-2-1': [3,2,1], '2-3-1': [2,3,1], '2-2-2': [2,2,2], '3-1-2': [3,1,2],
     '1-3-2': [1,3,2], '2-1-3': [2,1,3], '4-1-1': [4,1,1], '1-4-1': [1,4,1]
   };
-  var LINE_Y = { def:78, mid:48, fwd:16 };
+  var LINE_Y = { def:70, mid:40, fwd:16 };
   var GK_Y = 92; // goalkeeper always sits on its own line, behind the back line —
                  // never counted as part of the def/mid/fwd formation split.
 
